@@ -1,0 +1,57 @@
+name: Build Executables
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Build Frontend
+      working-directory: ./frontend
+      run: |
+        npm install
+        npm run build
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      working-directory: ./backend
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Build Executable with PyInstaller (Linux/Mac)
+      if: runner.os != 'Windows'
+      working-directory: ./backend
+      run: |
+        pyinstaller --name hugedomain-scraper-${{ runner.os }} --onefile --windowed --add-data "../frontend/dist:frontend/dist" run.py
+
+    - name: Build Executable with PyInstaller (Windows)
+      if: runner.os == 'Windows'
+      working-directory: ./backend
+      run: |
+        pyinstaller --name hugedomain-scraper-Windows --onefile --windowed --add-data "..\frontend\dist;frontend\dist" run.py
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Executable-${{ runner.os }}
+        path: backend/dist/*

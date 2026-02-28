@@ -1,0 +1,25 @@
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.env.local
+
+# Python
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/build/
+backend/dist/
+backend/*.spec
+backend/.pytest_cache/
+
+# Databases
+backend/hugedomains.duckdb
+backend/hugedomains.duckdb.wal
+backend/*.csv
+
+# Mac
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
