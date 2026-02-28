@@ -308,18 +308,30 @@ def get_resource_path(relative_path):
 frontend_dist_path = get_resource_path(os.path.join("frontend", "dist"))
 
 if os.path.exists(frontend_dist_path):
-    # Mount the assets directory (js/css/images)
+    # Route specifically for assets folder
     assets_path = os.path.join(frontend_dist_path, "assets")
     if os.path.exists(assets_path):
         app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
 
-    # Add a catch-all for React Router and root index.html
+    # Add a catch-all that serves from the dist folder if file exists, else index.html
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        path = os.path.join(frontend_dist_path, full_path)
-        if os.path.exists(path) and os.path.isfile(path):
-            return FileResponse(path)
-        return FileResponse(os.path.join(frontend_dist_path, "index.html"))
+        # Prevent accessing files outside of dist dir
+        if ".." in full_path:
+            raise HTTPException(status_code=400, detail="Invalid path")
+            
+        requested_path = os.path.join(frontend_dist_path, full_path)
+        
+        # If it's a specific file that exists (like vite.svg, favicon.ico), serve it
+        if os.path.exists(requested_path) and os.path.isfile(requested_path):
+            return FileResponse(requested_path)
+            
+        # Otherwise, fall back to React's index.html (for client-side routing)
+        index_path = os.path.join(frontend_dist_path, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+        
+        raise HTTPException(status_code=404, detail="Not Found")
 
 if __name__ == "__main__":
     import uvicorn
