@@ -1,8 +1,36 @@
 import duckdb
 import os
+import sys
+import shutil
 from contextlib import contextmanager
 
-DB_PATH = os.getenv("DB_PATH", "hugedomains.duckdb")
+def get_resource_path(relative_path):
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
+
+def setup_persistent_db():
+    home_dir = os.path.expanduser("~")
+    app_dir = os.path.join(home_dir, ".hugedomains")
+    os.makedirs(app_dir, exist_ok=True)
+    
+    db_file = os.path.join(app_dir, "hugedomains.duckdb")
+    bundled_db = get_resource_path("hugedomains.duckdb")
+    
+    if not os.path.exists(db_file) and os.path.exists(bundled_db) and os.path.abspath(bundled_db) != os.path.abspath(db_file):
+        print(f"First run detected. Provisioning database to {db_file}...")
+        shutil.copy2(bundled_db, db_file)
+        
+        bundled_wal = get_resource_path("hugedomains.duckdb.wal")
+        if os.path.exists(bundled_wal):
+            shutil.copy2(bundled_wal, db_file + ".wal")
+            
+    return db_file
+
+DB_PATH = os.getenv("DB_PATH", setup_persistent_db())
 _global_con = None
 
 def get_connection():
