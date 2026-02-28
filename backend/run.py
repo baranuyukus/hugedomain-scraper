@@ -29,4 +29,5 @@ if __name__ == '__main__':
     threading.Thread(target=open_browser, daemon=True).start()
     
     # Run the FastAPI app programmatically
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, log_level="info", workers=1)
+    import main
+    uvicorn.run(main.app, host="127.0.0.1", port=8000, log_level="info", workers=1)

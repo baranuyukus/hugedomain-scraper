@@ -21,7 +21,17 @@ def main():
 
     # 2. Install Backend Dependencies
     print("\n--- Installing Backend Dependencies ---")
-    run_cmd(f"{sys.executable} -m pip install -r requirements.txt", cwd=backend_dir)
+    
+    python_exe = sys.executable
+    venv_exe = os.path.join(backend_dir, "venv", "bin", "python3")
+    if platform.system() == "Windows":
+        venv_exe = os.path.join(backend_dir, "venv", "Scripts", "python.exe")
+        
+    if os.path.exists(venv_exe):
+        print(f"Detected virtual environment at {venv_exe}")
+        python_exe = venv_exe
+        
+    run_cmd(f"{python_exe} -m pip install -r requirements.txt", cwd=backend_dir)
 
     # 3. Build PyInstaller Executable
     print("\n--- Building Executable ---")
@@ -33,7 +43,7 @@ def main():
         print(f"Warning: Database not found at {db_path}. Building without pre-existing DB.")
         
     pyinstaller_cmd = [
-        sys.executable, "-m", "PyInstaller", 
+        python_exe, "-m", "PyInstaller", 
         "--name", f"hugedomain-scraper-{platform.system()}",
         "--onefile", "--windowed",
         "--add-data", f"../frontend/dist{sep}frontend/dist"
