@@ -1,7 +1,8 @@
 fastapi
 uvicorn
 duckdb
-aiosqlite
 curl_cffi
 beautifulsoup4
 pyinstaller
+pywebview
+pydantic

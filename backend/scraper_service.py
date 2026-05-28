@@ -2,6 +2,7 @@ import asyncio
 import re
 import csv
 import os
+import tempfile
 from datetime import datetime
 from typing import Optional, List, Tuple
 from bs4 import BeautifulSoup
@@ -19,11 +20,42 @@ HEADERS = {
     "Sec-Fetch-Site": "none",
     "Sec-Fetch-User": "?1",
 }
-PROXY_URL = "http://6c2eed6ba44a2b9d2ec4__cr.ca:942b397babcb4154@gw.dataimpulse.com:823"
-PROXIES = {"http": PROXY_URL, "https": PROXY_URL}
+class ProxyConfig:
+    def __init__(self):
+        self.enabled: bool = False
+        self.url: str = ""
+
+    @property
+    def proxies(self):
+        if self.enabled and self.url:
+            return {"http": self.url, "https": self.url}
+        return None
+
+proxy_config = ProxyConfig()
 
 RECORDS_PER_PAGE = 500
 MAX_CONCURRENT_LENGTHS = 10
+MAX_CONCURRENT_PREFIXES = 20
+PREFIX_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
+SORT_CHANNELS = ["PriceAsc", "PriceDesc", "NameAsc", "NameDesc"]
+
+PRICE_RANGES = [
+    (400, 600),
+    (600, 900),
+    (900, 1500),
+    (1500, 2000),
+    (2000, 2500),
+    (2500, 3000),
+    (3000, 4000),
+    (4000, 5000),
+    (5000, 7000),
+    (7000, 10000),
+    (10000, 20000),
+    (20000, 50000),
+    (50000, 200000),
+    (200000, 500000),
+    (500000, 2000000),
+]
 
 class ScraperState:
     def __init__(self):
@@ -33,6 +65,10 @@ class ScraperState:
         self.scan_id: Optional[int] = None
         self.start_time: Optional[datetime] = None
         self.snapshot_name: str = ""
+        self.current_phase: str = ""
+        self.phases_completed: int = 0
+        self.phases_total: int = 0
+        self.method: str = "legacy"
 
 scraper_state = ScraperState()
 
@@ -79,7 +115,18 @@ def save_to_csv(data: list, filename: str, append: bool = False):
         if data:
             writer.writerows(data)
 
-async def fetch_stream(length, sort_direction, global_seen, snapshot_id):
+def build_two_char_prefixes() -> list[str]:
+    return [f"{first}{second}" for first in PREFIX_ALPHABET for second in PREFIX_ALPHABET]
+
+async def fetch_stream(
+    sort_direction,
+    global_seen,
+    snapshot_id,
+    length=None,
+    price_from=None,
+    price_to=None,
+    prefix=None,
+):
     start_index = 1
     next_token = ""
     
@@ -88,14 +135,22 @@ async def fetch_stream(length, sort_direction, global_seen, snapshot_id):
             "maxrows": RECORDS_PER_PAGE,
             "start": start_index,
             "anchor": "all",
-            "length_start": length,
-            "length_end": length,
             "highlightbg": 1,
             "catsearch": 0,
             "sort": sort_direction
         }
+        if length is not None:
+            params["length_start"] = length
+            params["length_end"] = length
+        if prefix:
+            params["domain_name"] = prefix
+            params["anchor"] = "left"
         if next_token:
             params["n"] = next_token
+        if price_from is not None:
+            params["price_from"] = price_from
+        if price_to is not None:
+            params["price_to"] = price_to
 
         success = False
         max_retries = 10
@@ -104,7 +159,8 @@ async def fetch_stream(length, sort_direction, global_seen, snapshot_id):
                 break
             try:
                 # Use curl_cffi to bypass protection
-                async with AsyncSession(impersonate="chrome120", proxies=PROXIES, headers=HEADERS, timeout=45) as session:
+                active_proxies = proxy_config.proxies
+                async with AsyncSession(impersonate="chrome120", proxies=active_proxies, headers=HEADERS, timeout=45) as session:
                     response = await session.get(BASE_URL, params=params)
                     
                     if response.status_code == 200:
@@ -122,7 +178,7 @@ async def fetch_stream(length, sort_direction, global_seen, snapshot_id):
                                     global_seen.add(domain_name)
                             
                             if new_domains:
-                                save_to_csv(new_domains, filename=f"/tmp/snapshot_{snapshot_id}.csv", append=True)
+                                save_to_csv(new_domains, filename=os.path.join(tempfile.gettempdir(), f"snapshot_{snapshot_id}.csv"), append=True)
                                 scraper_state.total_extracted += len(new_domains)
                             
                             overlap_count = int(overlap_count)
@@ -150,19 +206,42 @@ async def fetch_stream(length, sort_direction, global_seen, snapshot_id):
         if not success or not next_token:
             break
 
-async def process_length(length, channels, semaphore, global_seen, snapshot_id):
+async def process_length(length, channels, semaphore, global_seen, snapshot_id, price_from=None, price_to=None):
     async with semaphore:
         if not scraper_state.is_running:
             return
-        tasks = [fetch_stream(length, sort_dir, global_seen, snapshot_id) for sort_dir in channels]
+        tasks = [
+            fetch_stream(
+                sort_dir,
+                global_seen,
+                snapshot_id,
+                length=length,
+                price_from=price_from,
+                price_to=price_to,
+            )
+            for sort_dir in channels
+        ]
         await asyncio.gather(*tasks)
 
-async def run_scraper_engine(snapshot_name: str):
+async def process_prefix(prefix, channels, semaphore, global_seen, snapshot_id):
+    async with semaphore:
+        if not scraper_state.is_running:
+            return
+        scraper_state.current_phase = f"Prefix {prefix}"
+        tasks = [
+            fetch_stream(sort_dir, global_seen, snapshot_id, prefix=prefix)
+            for sort_dir in channels
+        ]
+        await asyncio.gather(*tasks)
+        scraper_state.phases_completed += 1
+
+async def run_scraper_engine(snapshot_name: str, method: str = "legacy"):
     scraper_state.is_running = True
     scraper_state.status = "scraping"
     scraper_state.snapshot_name = snapshot_name
     scraper_state.total_extracted = 0
     scraper_state.start_time = datetime.now()
+    scraper_state.method = method if method in {"legacy", "prefix"} else "legacy"
     
     # Create the snapshot entry
     def create_snapshot() -> int:
@@ -173,18 +252,48 @@ async def run_scraper_engine(snapshot_name: str):
     snapshot_id = await asyncio.get_event_loop().run_in_executor(None, create_snapshot)
     scraper_state.scan_id = snapshot_id
     
-    # Initialize CSV file
-    csv_file = f"/tmp/snapshot_{snapshot_id}.csv"
+    # Initialize CSV file (cross-platform temp path)
+    csv_file = os.path.join(tempfile.gettempdir(), f"snapshot_{snapshot_id}.csv")
     save_to_csv([], filename=csv_file, append=False)
     
     global_seen = set()
-    channels = ["PriceAsc", "PriceDesc", "NameAsc", "NameDesc"]
-    semaphore = asyncio.Semaphore(MAX_CONCURRENT_LENGTHS)
-    
-    tasks = [process_length(length, channels, semaphore, global_seen, snapshot_id) for length in range(1, 64)]
-    
+    channels = SORT_CHANNELS
+    scraper_state.phases_completed = 0
+
     try:
-        await asyncio.gather(*tasks)
+        if scraper_state.method == "prefix":
+            prefixes = build_two_char_prefixes()
+            semaphore = asyncio.Semaphore(MAX_CONCURRENT_PREFIXES)
+            scraper_state.phases_total = len(prefixes)
+            scraper_state.current_phase = "Prefix scan starting"
+            tasks = [
+                process_prefix(prefix, channels, semaphore, global_seen, snapshot_id)
+                for prefix in prefixes
+            ]
+            await asyncio.gather(*tasks)
+            scraper_state.phases_completed = len(prefixes)
+        else:
+            semaphore = asyncio.Semaphore(MAX_CONCURRENT_LENGTHS)
+            scraper_state.phases_total = 1 + len(PRICE_RANGES)
+            # Phase 1: No price filter — catches all domains regardless of price
+            scraper_state.current_phase = "Phase 1/16 — No price filter"
+            scraper_state.status = "scraping"
+            tasks = [process_length(length, channels, semaphore, global_seen, snapshot_id) for length in range(1, 64)]
+            await asyncio.gather(*tasks)
+            scraper_state.phases_completed = 1
+
+            # Phase 2–16: One pass per price range
+            for i, (price_from, price_to) in enumerate(PRICE_RANGES, start=2):
+                if not scraper_state.is_running:
+                    break
+                scraper_state.current_phase = f"Phase {i}/16 — ${price_from:,}–${price_to:,}"
+                tasks = [
+                    process_length(length, channels, semaphore, global_seen, snapshot_id, price_from, price_to)
+                    for length in range(1, 64)
+                ]
+                await asyncio.gather(*tasks)
+                scraper_state.phases_completed = i
+
     finally:
         scraper_state.is_running = False
         scraper_state.status = "finalizing_db"

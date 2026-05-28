@@ -1,36 +1,21 @@
 import duckdb
 import os
 import sys
-import shutil
+from pathlib import Path
 from contextlib import contextmanager
 
-def get_resource_path(relative_path):
-    try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_path, relative_path)
+def get_default_db_path() -> str:
+    if os.getenv("DB_PATH"):
+        return os.environ["DB_PATH"]
+    if getattr(sys, "frozen", False):
+        if sys.platform == "darwin":
+            app_dir = Path.home() / "Library" / "Application Support" / "HugeDomains Tracker"
+            app_dir.mkdir(parents=True, exist_ok=True)
+            return str(app_dir / "hugedomains.duckdb")
+        return str(Path(sys.executable).resolve().parent / "hugedomains.duckdb")
+    return "hugedomains.duckdb"
 
-def setup_persistent_db():
-    home_dir = os.path.expanduser("~")
-    app_dir = os.path.join(home_dir, ".hugedomains")
-    os.makedirs(app_dir, exist_ok=True)
-    
-    db_file = os.path.join(app_dir, "hugedomains.duckdb")
-    bundled_db = get_resource_path("hugedomains.duckdb")
-    
-    if not os.path.exists(db_file) and os.path.exists(bundled_db) and os.path.abspath(bundled_db) != os.path.abspath(db_file):
-        print(f"First run detected. Provisioning database to {db_file}...")
-        shutil.copy2(bundled_db, db_file)
-        
-        bundled_wal = get_resource_path("hugedomains.duckdb.wal")
-        if os.path.exists(bundled_wal):
-            shutil.copy2(bundled_wal, db_file + ".wal")
-            
-    return db_file
-
-DB_PATH = os.getenv("DB_PATH", setup_persistent_db())
+DB_PATH = get_default_db_path()
 _global_con = None
 
 def get_connection():
@@ -54,6 +39,22 @@ def init_db():
         con.execute("CREATE SEQUENCE IF NOT EXISTS domain_seq START 1")
     except Exception:
         pass
+
+    try:
+        con.execute("CREATE SEQUENCE IF NOT EXISTS watchlist_seq START 1")
+    except Exception:
+        pass
+
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS watchlist (
+            id INTEGER DEFAULT nextval('watchlist_seq') PRIMARY KEY,
+            domain_id INTEGER UNIQUE,
+            domain VARCHAR,
+            price_usd DECIMAL(12,2),
+            note VARCHAR DEFAULT '',
+            added_at TIMESTAMP DEFAULT current_timestamp
+        )
+    """)
 
     con.execute("""
         CREATE TABLE IF NOT EXISTS domains (
@@ -86,7 +87,14 @@ def init_db():
     con.execute("CREATE INDEX IF NOT EXISTS idx_snapshot ON snapshot_data(snapshot_id)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_snap_domain ON snapshot_data(snapshot_id, domain)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_sd_domain_id ON snapshot_data(domain_id)")
-    
+
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS settings (
+            key VARCHAR PRIMARY KEY,
+            value VARCHAR NOT NULL DEFAULT ''
+        )
+    """)
+
     print("Database initialized successfully.")
 
 @contextmanager

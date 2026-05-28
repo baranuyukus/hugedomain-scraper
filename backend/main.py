@@ -2,12 +2,28 @@ from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Optional
 import time
 import asyncio
 import os
 import sys
+from pathlib import Path
 from database import get_db, init_db
-from scraper_service import run_scraper_engine, stop_scraper_engine, scraper_state
+from scraper_service import run_scraper_engine, stop_scraper_engine, scraper_state, proxy_config
+
+class ProxyConfigRequest(BaseModel):
+    enabled: bool
+    url: str = ""
+
+class WatchlistAddRequest(BaseModel):
+    domain_id: int
+    domain: str
+    price_usd: Optional[float] = None
+    note: str = ""
+
+class WatchlistUpdateNoteRequest(BaseModel):
+    note: str
 
 app = FastAPI(title="HugeDomains Tracker API")
 
@@ -22,11 +38,26 @@ app.add_middleware(
 
 @app.on_event("startup")
 def startup_event():
-    # Initialize DB (creates it if missing)
     init_db()
+    # Load persisted proxy config
+    try:
+        with get_db() as con:
+            row = con.execute(
+                "SELECT key, value FROM settings WHERE key IN ('proxy_enabled', 'proxy_url')"
+            ).fetchall()
+            settings = {r[0]: r[1] for r in row}
+            if "proxy_enabled" in settings:
+                proxy_config.enabled = settings["proxy_enabled"].lower() == "true"
+            if "proxy_url" in settings:
+                proxy_config.url = settings["proxy_url"]
+    except Exception:
+        pass
 
 @app.get("/")
 def read_root():
+    index_path = frontend_dist_path / "index.html"
+    if index_path.exists():
+        return FileResponse(index_path)
     return {"message": "Welcome to HugeDomains Tracker API", "status": "running"}
 
 @app.get("/snapshots")
@@ -267,15 +298,90 @@ def get_domain_history(domain_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/proxy/config")
+def get_proxy_config():
+    """Returns the current proxy configuration."""
+    return {"enabled": proxy_config.enabled, "url": proxy_config.url}
+
+@app.post("/proxy/config")
+def set_proxy_config(req: ProxyConfigRequest):
+    """Updates proxy configuration and persists it to the database."""
+    proxy_config.enabled = req.enabled
+    proxy_config.url = req.url
+    try:
+        with get_db() as con:
+            con.execute(
+                "INSERT INTO settings (key, value) VALUES ('proxy_enabled', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                [str(req.enabled).lower()]
+            )
+            con.execute(
+                "INSERT INTO settings (key, value) VALUES ('proxy_url', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                [req.url]
+            )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"message": "Proxy configuration updated", "enabled": proxy_config.enabled, "url": proxy_config.url}
+
+@app.get("/watchlist")
+def get_watchlist():
+    """Returns all saved watchlist items."""
+    try:
+        with get_db() as con:
+            result = con.execute(
+                "SELECT id, domain_id, domain, price_usd, note, added_at FROM watchlist ORDER BY added_at DESC"
+            ).fetchall()
+            items = [
+                {"id": r[0], "domain_id": r[1], "domain": r[2], "price_usd": r[3], "note": r[4], "added_at": str(r[5])}
+                for r in result
+            ]
+            return {"items": items}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/watchlist")
+def add_to_watchlist(req: WatchlistAddRequest):
+    """Saves a domain to the watchlist."""
+    try:
+        with get_db() as con:
+            con.execute(
+                "INSERT INTO watchlist (domain_id, domain, price_usd, note) VALUES (?, ?, ?, ?) ON CONFLICT (domain_id) DO NOTHING",
+                [req.domain_id, req.domain, req.price_usd, req.note]
+            )
+            return {"message": f"Domain '{req.domain}' saved to watchlist"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/watchlist/{domain_id}")
+def remove_from_watchlist(domain_id: int):
+    """Removes a domain from the watchlist."""
+    try:
+        with get_db() as con:
+            con.execute("DELETE FROM watchlist WHERE domain_id = ?", [domain_id])
+            return {"message": f"Domain {domain_id} removed from watchlist"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/watchlist/{domain_id}/note")
+def update_watchlist_note(domain_id: int, req: WatchlistUpdateNoteRequest):
+    """Updates the note for a watchlist item."""
+    try:
+        with get_db() as con:
+            con.execute("UPDATE watchlist SET note = ? WHERE domain_id = ?", [req.note, domain_id])
+            return {"message": "Note updated"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/scrape/start")
-async def start_scraper(snapshot_name: str):
+async def start_scraper(snapshot_name: str, method: str = "legacy"):
     """Starts the HugeDomains scraper in the background."""
     if scraper_state.is_running:
         raise HTTPException(status_code=400, detail="Scraper is already running")
+    if method not in {"legacy", "prefix"}:
+        raise HTTPException(status_code=400, detail="Invalid scraper method")
     
     # We use asyncio.create_task to run the heavy loop in the background of the event loop
-    asyncio.create_task(run_scraper_engine(snapshot_name))
-    return {"message": f"Scraping started for '{snapshot_name}'"}
+    asyncio.create_task(run_scraper_engine(snapshot_name, method))
+    return {"message": f"Scraping started for '{snapshot_name}' with method '{method}'"}
 
 @app.get("/scrape/status")
 def get_scraper_status():
@@ -284,7 +390,11 @@ def get_scraper_status():
         "is_running": scraper_state.is_running,
         "status": scraper_state.status,
         "snapshot_name": scraper_state.snapshot_name,
-        "total_extracted": scraper_state.total_extracted
+        "method": scraper_state.method,
+        "total_extracted": scraper_state.total_extracted,
+        "current_phase": scraper_state.current_phase,
+        "phases_completed": scraper_state.phases_completed,
+        "phases_total": scraper_state.phases_total,
     }
 
 @app.post("/scrape/stop")
@@ -295,43 +405,32 @@ def stop_scraper():
     stop_scraper_engine()
     return {"message": "Stop signal sent to scraper"}
 
-# === STATIC FILES FOR FRONTEND ===
-def get_resource_path(relative_path):
-    try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
-    return os.path.join(base_path, relative_path)
+def get_resource_path(relative_path: str) -> Path:
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / relative_path
+    return Path(__file__).resolve().parent.parent / relative_path
 
 frontend_dist_path = get_resource_path(os.path.join("frontend", "dist"))
 
-if os.path.exists(frontend_dist_path):
-    # Route specifically for assets folder
-    assets_path = os.path.join(frontend_dist_path, "assets")
-    if os.path.exists(assets_path):
+if frontend_dist_path.exists():
+    assets_path = frontend_dist_path / "assets"
+    if assets_path.exists():
         app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
 
-    # Add a catch-all that serves from the dist folder if file exists, else index.html
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        # Prevent accessing files outside of dist dir
         if ".." in full_path:
             raise HTTPException(status_code=400, detail="Invalid path")
-            
-        requested_path = os.path.join(frontend_dist_path, full_path)
-        
-        # If it's a specific file that exists (like vite.svg, favicon.ico), serve it
-        if os.path.exists(requested_path) and os.path.isfile(requested_path):
+
+        requested_path = frontend_dist_path / full_path
+        if requested_path.exists() and requested_path.is_file():
             return FileResponse(requested_path)
-            
-        # Otherwise, fall back to React's index.html (for client-side routing)
-        index_path = os.path.join(frontend_dist_path, "index.html")
-        if os.path.exists(index_path):
+
+        index_path = frontend_dist_path / "index.html"
+        if index_path.exists():
             return FileResponse(index_path)
-        
-        raise HTTPException(status_code=404, detail="Not Found")
+
+        raise HTTPException(status_code=404, detail="Frontend build not found")
 
 if __name__ == "__main__":
     import uvicorn
