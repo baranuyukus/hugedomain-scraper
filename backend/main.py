@@ -372,7 +372,7 @@ def update_watchlist_note(domain_id: int, req: WatchlistUpdateNoteRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/scrape/start")
-async def start_scraper(snapshot_name: str, method: str = "legacy"):
+async def start_scraper(snapshot_name: str, method: str = "legacy", concurrency: Optional[int] = None):
     """Starts the HugeDomains scraper in the background."""
     if scraper_state.is_running:
         raise HTTPException(status_code=400, detail="Scraper is already running")
@@ -380,7 +380,7 @@ async def start_scraper(snapshot_name: str, method: str = "legacy"):
         raise HTTPException(status_code=400, detail="Invalid scraper method")
     
     # We use asyncio.create_task to run the heavy loop in the background of the event loop
-    asyncio.create_task(run_scraper_engine(snapshot_name, method))
+    asyncio.create_task(run_scraper_engine(snapshot_name, method, concurrency))
     return {"message": f"Scraping started for '{snapshot_name}' with method '{method}'"}
 
 @app.get("/scrape/status")
@@ -394,6 +394,7 @@ def get_scraper_status():
         "status": scraper_state.status,
         "snapshot_name": scraper_state.snapshot_name,
         "method": scraper_state.method,
+        "concurrency": scraper_state.concurrency,
         "total_extracted": scraper_state.total_extracted,
         "current_phase": scraper_state.current_phase,
         "phases_completed": scraper_state.phases_completed,

@@ -20,6 +20,7 @@ const ScraperPanel = () => {
     const [status, setStatus] = useState<any>(null);
     const [snapshotName, setSnapshotName] = useState("");
     const [scraperMethod, setScraperMethod] = useState<"legacy" | "prefix">("legacy");
+    const [concurrency, setConcurrency] = useState(24);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
@@ -78,7 +79,7 @@ const ScraperPanel = () => {
         setLoading(true);
         try {
             await axios.post(`${API_BASE}/scrape/start`, null, {
-                params: { snapshot_name: snapshotName, method: scraperMethod }
+                params: { snapshot_name: snapshotName, method: scraperMethod, concurrency }
             });
             setSnapshotName("");
             fetchStatus();
@@ -161,12 +162,30 @@ const ScraperPanel = () => {
                                         <select
                                             title="scraper_method"
                                             value={scraperMethod}
-                                            onChange={(e) => setScraperMethod(e.target.value as "legacy" | "prefix")}
+                                            onChange={(e) => {
+                                                const nextMethod = e.target.value as "legacy" | "prefix";
+                                                setScraperMethod(nextMethod);
+                                                setConcurrency(nextMethod === "prefix" ? 24 : 12);
+                                            }}
                                             className="hd-field w-full px-4 py-2 bg-white outline-none text-sm"
                                         >
                                             <option value="legacy">Legacy: length + price phases</option>
                                             <option value="prefix">Prefix: 2-character starts-with scan</option>
                                         </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Concurrent Channels</label>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            max={64}
+                                            value={concurrency}
+                                            onChange={(e) => setConcurrency(Math.max(1, Math.min(64, Number(e.target.value) || 1)))}
+                                            className="hd-field w-full px-4 py-2 outline-none"
+                                        />
+                                        <p className="mt-1 text-xs text-gray-400">
+                                            Prefix mode runs this many prefixes at once; each prefix uses multiple sort streams.
+                                        </p>
                                     </div>
                                     <button
                                         onClick={startScraper}
@@ -183,7 +202,7 @@ const ScraperPanel = () => {
                                         <div className="text-sm text-indigo-600 font-medium tracking-wide uppercase">Active Snapshot</div>
                                         <div className="font-bold text-lg text-indigo-900">{status.snapshot_name}</div>
                                         <div className="text-xs font-semibold uppercase tracking-wider text-indigo-500">
-                                            Method: {status.method === "prefix" ? "Prefix scan" : "Legacy scan"}
+                                            Method: {status.method === "prefix" ? "Prefix scan" : "Legacy scan"} · {status.concurrency || "-"} channels
                                         </div>
                                         {status.current_phase && (
                                             <div className="text-xs text-indigo-700">

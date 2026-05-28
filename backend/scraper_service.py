@@ -33,9 +33,9 @@ class ProxyConfig:
 
 proxy_config = ProxyConfig()
 
-RECORDS_PER_PAGE = 500
-MAX_CONCURRENT_LENGTHS = 10
-MAX_CONCURRENT_PREFIXES = 20
+RECORDS_PER_PAGE = int(os.getenv("HD_RECORDS_PER_PAGE", "500"))
+MAX_CONCURRENT_LENGTHS = int(os.getenv("HD_MAX_CONCURRENT_LENGTHS", "12"))
+MAX_CONCURRENT_PREFIXES = int(os.getenv("HD_MAX_CONCURRENT_PREFIXES", "24"))
 PREFIX_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
 SORT_CHANNELS = ["PriceAsc", "PriceDesc", "NameAsc", "NameDesc"]
 
@@ -70,6 +70,7 @@ class ScraperState:
         self.phases_total: int = 0
         self.method: str = "legacy"
         self.temp_csv_path: str = ""
+        self.concurrency: int = 0
 
 scraper_state = ScraperState()
 
@@ -116,6 +117,26 @@ def save_to_csv(data: list, filename: str, append: bool = False):
         if data:
             writer.writerows(data)
 
+async def csv_writer(csv_file: str, queue: asyncio.Queue):
+    """Writes scraper batches through one open file handle instead of reopening CSV per page."""
+    rows_since_flush = 0
+    with open(csv_file, mode="a", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        while True:
+            batch = await queue.get()
+            try:
+                if batch is None:
+                    break
+                if batch:
+                    writer.writerows(batch)
+                    rows_since_flush += len(batch)
+                if rows_since_flush >= 10000:
+                    file.flush()
+                    rows_since_flush = 0
+            finally:
+                queue.task_done()
+        file.flush()
+
 def build_two_char_prefixes() -> list[str]:
     return [f"{first}{second}" for first in PREFIX_ALPHABET for second in PREFIX_ALPHABET]
 
@@ -123,6 +144,7 @@ async def fetch_stream(
     sort_direction,
     global_seen,
     snapshot_id,
+    write_queue,
     length=None,
     price_from=None,
     price_to=None,
@@ -130,43 +152,42 @@ async def fetch_stream(
 ):
     start_index = 1
     next_token = ""
-    
-    while scraper_state.is_running:
-        params = {
-            "maxrows": RECORDS_PER_PAGE,
-            "start": start_index,
-            "anchor": "all",
-            "highlightbg": 1,
-            "catsearch": 0,
-            "sort": sort_direction
-        }
-        if length is not None:
-            params["length_start"] = length
-            params["length_end"] = length
-        if prefix:
-            params["domain_name"] = prefix
-            params["anchor"] = "left"
-        if next_token:
-            params["n"] = next_token
-        if price_from is not None:
-            params["price_from"] = price_from
-        if price_to is not None:
-            params["price_to"] = price_to
 
-        success = False
-        max_retries = 10
-        for attempt in range(max_retries):
-            if not scraper_state.is_running:
-                break
-            try:
-                # Use curl_cffi to bypass protection
-                active_proxies = proxy_config.proxies
-                async with AsyncSession(impersonate="chrome120", proxies=active_proxies, headers=HEADERS, timeout=45) as session:
+    active_proxies = proxy_config.proxies
+    async with AsyncSession(impersonate="chrome120", proxies=active_proxies, headers=HEADERS, timeout=45) as session:
+        while scraper_state.is_running:
+            params = {
+                "maxrows": RECORDS_PER_PAGE,
+                "start": start_index,
+                "anchor": "all",
+                "highlightbg": 1,
+                "catsearch": 0,
+                "sort": sort_direction
+            }
+            if length is not None:
+                params["length_start"] = length
+                params["length_end"] = length
+            if prefix:
+                params["domain_name"] = prefix
+                params["anchor"] = "left"
+            if next_token:
+                params["n"] = next_token
+            if price_from is not None:
+                params["price_from"] = price_from
+            if price_to is not None:
+                params["price_to"] = price_to
+
+            success = False
+            max_retries = 10
+            for attempt in range(max_retries):
+                if not scraper_state.is_running:
+                    break
+                try:
                     response = await session.get(BASE_URL, params=params)
-                    
+
                     if response.status_code == 200:
                         domains, next_token = parse_html_and_next(response.text)
-                        
+
                         if domains:
                             new_domains: list[tuple[str, Optional[float], int]] = []
                             overlap_count: int = 0
@@ -177,37 +198,34 @@ async def fetch_stream(
                                 else:
                                     new_domains.append(item)
                                     global_seen.add(domain_name)
-                            
+
                             if new_domains:
-                                save_to_csv(new_domains, filename=os.path.join(tempfile.gettempdir(), f"snapshot_{snapshot_id}.csv"), append=True)
+                                await write_queue.put(new_domains)
                                 scraper_state.total_extracted += len(new_domains)
-                            
-                            overlap_count = int(overlap_count)
+
                             if overlap_count > RECORDS_PER_PAGE * 0.8:
                                 # They met in the middle. Stop this stream safely.
                                 return
-                            
+
                             if start_index == 1:
                                 start_index = RECORDS_PER_PAGE
                             else:
                                 start_index += RECORDS_PER_PAGE
                         else:
                             next_token = None
-                            
+
                         success = True
                         break
                     elif response.status_code == 302:
-                        return # Token expired or end
-                    else:
-                        pass # Blocked, retry
-            except Exception as e:
-                pass
-            await asyncio.sleep(2)
-            
-        if not success or not next_token:
-            break
+                        return
+                except Exception:
+                    pass
+                await asyncio.sleep(1 + min(attempt, 4))
 
-async def process_length(length, channels, semaphore, global_seen, snapshot_id, price_from=None, price_to=None):
+            if not success or not next_token:
+                break
+
+async def process_length(length, channels, semaphore, global_seen, snapshot_id, write_queue, price_from=None, price_to=None):
     async with semaphore:
         if not scraper_state.is_running:
             return
@@ -216,6 +234,7 @@ async def process_length(length, channels, semaphore, global_seen, snapshot_id, 
                 sort_dir,
                 global_seen,
                 snapshot_id,
+                write_queue,
                 length=length,
                 price_from=price_from,
                 price_to=price_to,
@@ -224,25 +243,35 @@ async def process_length(length, channels, semaphore, global_seen, snapshot_id, 
         ]
         await asyncio.gather(*tasks)
 
-async def process_prefix(prefix, channels, semaphore, global_seen, snapshot_id):
+async def process_prefix(prefix, channels, semaphore, global_seen, snapshot_id, write_queue):
     async with semaphore:
         if not scraper_state.is_running:
             return
         scraper_state.current_phase = f"Prefix {prefix}"
         tasks = [
-            fetch_stream(sort_dir, global_seen, snapshot_id, prefix=prefix)
+            fetch_stream(sort_dir, global_seen, snapshot_id, write_queue, prefix=prefix)
             for sort_dir in channels
         ]
         await asyncio.gather(*tasks)
         scraper_state.phases_completed += 1
 
-async def run_scraper_engine(snapshot_name: str, method: str = "legacy"):
+def clamp_concurrency(value: Optional[int], fallback: int) -> int:
+    if value is None:
+        return fallback
+    return max(1, min(64, int(value)))
+
+async def run_scraper_engine(snapshot_name: str, method: str = "legacy", concurrency: Optional[int] = None):
     scraper_state.is_running = True
     scraper_state.status = "scraping"
     scraper_state.snapshot_name = snapshot_name
     scraper_state.total_extracted = 0
     scraper_state.start_time = datetime.now()
     scraper_state.method = method if method in {"legacy", "prefix"} else "legacy"
+    active_concurrency = clamp_concurrency(
+        concurrency,
+        MAX_CONCURRENT_PREFIXES if scraper_state.method == "prefix" else MAX_CONCURRENT_LENGTHS,
+    )
+    scraper_state.concurrency = active_concurrency
     
     # Create the snapshot entry
     def create_snapshot() -> int:
@@ -257,6 +286,8 @@ async def run_scraper_engine(snapshot_name: str, method: str = "legacy"):
     csv_file = os.path.join(tempfile.gettempdir(), f"snapshot_{snapshot_id}.csv")
     scraper_state.temp_csv_path = csv_file
     save_to_csv([], filename=csv_file, append=False)
+    write_queue: asyncio.Queue = asyncio.Queue(maxsize=500)
+    writer_task = asyncio.create_task(csv_writer(csv_file, write_queue))
     
     global_seen = set()
     channels = SORT_CHANNELS
@@ -265,22 +296,22 @@ async def run_scraper_engine(snapshot_name: str, method: str = "legacy"):
     try:
         if scraper_state.method == "prefix":
             prefixes = build_two_char_prefixes()
-            semaphore = asyncio.Semaphore(MAX_CONCURRENT_PREFIXES)
+            semaphore = asyncio.Semaphore(active_concurrency)
             scraper_state.phases_total = len(prefixes)
             scraper_state.current_phase = "Prefix scan starting"
             tasks = [
-                process_prefix(prefix, channels, semaphore, global_seen, snapshot_id)
+                process_prefix(prefix, channels, semaphore, global_seen, snapshot_id, write_queue)
                 for prefix in prefixes
             ]
             await asyncio.gather(*tasks)
             scraper_state.phases_completed = len(prefixes)
         else:
-            semaphore = asyncio.Semaphore(MAX_CONCURRENT_LENGTHS)
+            semaphore = asyncio.Semaphore(active_concurrency)
             scraper_state.phases_total = 1 + len(PRICE_RANGES)
             # Phase 1: No price filter — catches all domains regardless of price
             scraper_state.current_phase = "Phase 1/16 — No price filter"
             scraper_state.status = "scraping"
-            tasks = [process_length(length, channels, semaphore, global_seen, snapshot_id) for length in range(1, 64)]
+            tasks = [process_length(length, channels, semaphore, global_seen, snapshot_id, write_queue) for length in range(1, 64)]
             await asyncio.gather(*tasks)
             scraper_state.phases_completed = 1
 
@@ -290,13 +321,15 @@ async def run_scraper_engine(snapshot_name: str, method: str = "legacy"):
                     break
                 scraper_state.current_phase = f"Phase {i}/16 — ${price_from:,}–${price_to:,}"
                 tasks = [
-                    process_length(length, channels, semaphore, global_seen, snapshot_id, price_from, price_to)
+                    process_length(length, channels, semaphore, global_seen, snapshot_id, write_queue, price_from, price_to)
                     for length in range(1, 64)
                 ]
                 await asyncio.gather(*tasks)
                 scraper_state.phases_completed = i
 
     finally:
+        await write_queue.put(None)
+        await writer_task
         scraper_state.is_running = False
         scraper_state.status = "finalizing_db"
         

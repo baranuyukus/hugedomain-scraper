@@ -9,7 +9,7 @@ import axios from "axios";
 // Register all community features
 ModuleRegistry.registerModules([AllCommunityModule]);
 import { useDebounceValue } from "usehooks-ts";
-import { Search, Bookmark } from "lucide-react";
+import { Search, Bookmark, History } from "lucide-react";
 
 interface DomainGridProps {
     snapshotId: number;
@@ -75,13 +75,13 @@ const DomainGrid = ({ snapshotId, onOpenHistory }: DomainGridProps) => {
 
     const columnDefs: ColDef[] = [
         {
-            field: "bookmark", headerName: "", sortable: false, filter: false, width: 50, pinned: "left",
+            field: "bookmark", headerName: "", sortable: false, filter: false, width: 44, minWidth: 44, maxWidth: 44, pinned: "left", cellClass: "hd-center-cell",
             cellRenderer: (params: any) => {
                 const isSaved = savedIdsRef.current.has(params.data?.domain_id);
                 return (
                     <button
                         onClick={() => handleToggleWatchlist(params.data)}
-                        className={`mt-1 p-1 rounded transition-colors ${isSaved ? "text-amber-500 hover:text-amber-700" : "text-gray-300 hover:text-amber-400"}`}
+                        className={`hd-icon-button ${isSaved ? "text-amber-500 hover:text-amber-700" : "text-gray-300 hover:text-amber-400"}`}
                         title={isSaved ? "Remove from watchlist" : "Save to watchlist"}
                     >
                         <Bookmark className="w-4 h-4" fill={isSaved ? "currentColor" : "none"} />
@@ -90,29 +90,31 @@ const DomainGrid = ({ snapshotId, onOpenHistory }: DomainGridProps) => {
             }
         },
         {
-            field: "history_action", headerName: "Flow", sortable: false, filter: false, width: 100, pinned: "left",
+            field: "history_action", headerName: "Flow", sortable: false, filter: false, width: 78, minWidth: 78, maxWidth: 90, pinned: "left", cellClass: "hd-center-cell",
             cellRenderer: (params: any) => (
                 <button
                     onClick={() => onOpenHistory(params.data.domain_id, params.data.domain)}
-                    className="mt-1 text-xs font-semibold bg-indigo-50 border border-indigo-100 text-indigo-600 px-3 py-1 rounded shadow-sm hover:bg-indigo-100 transition-colors"
+                    className="hd-row-action"
+                    title="Open price history"
                 >
+                    <History className="w-3.5 h-3.5" />
                     History
                 </button>
             )
         },
         {
-            field: "domain", headerName: "Domain Name", sortable: true, filter: false, flex: 2,
+            field: "domain", headerName: "Domain Name", sortable: true, filter: false, flex: 1, minWidth: 360,
             cellRenderer: (params: any) => (
-                <a href={`http://${params.value}`} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
+                <a href={`http://${params.value}`} target="_blank" rel="noreferrer" className="font-semibold text-indigo-600 hover:text-indigo-700 hover:underline">
                     {params.value}
                 </a>
             )
         },
         {
-            field: "price_usd", headerName: "Price (USD)", sortable: true, filter: false, flex: 1,
+            field: "price_usd", headerName: "Price (USD)", sortable: true, filter: false, width: 170, minWidth: 150, cellClass: "hd-price-cell",
             valueFormatter: (p) => p.value == null ? "-" : `$${p.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
         },
-        { field: "length", headerName: "Length", sortable: true, filter: false, flex: 1 }
+        { field: "length", headerName: "Length", sortable: true, filter: false, width: 110, minWidth: 90 }
     ];
 
     const dataSource: IDatasource = useMemo(() => {
@@ -162,11 +164,11 @@ const DomainGrid = ({ snapshotId, onOpenHistory }: DomainGridProps) => {
 
     return (
         <div className="flex flex-col h-full">
-            <div className="control-strip p-4 border-b border-gray-100 flex flex-col gap-4">
+            <div className="control-strip border-b border-gray-200 px-4 py-3 flex flex-col gap-3">
                 {/* Top Row: Search & Filters */}
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                    <div className="hd-field flex items-center gap-2 flex-1 max-w-2xl px-3 py-2">
-                        <Search className="w-5 h-5 text-gray-400" />
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="hd-field flex items-center gap-2 flex-1 min-w-[360px] max-w-3xl px-3">
+                        <Search className="w-4 h-4 text-gray-400" />
                         <input
                             type="text"
                             placeholder="Search domains (e.g. meta, crypto, ai...)"
@@ -176,7 +178,7 @@ const DomainGrid = ({ snapshotId, onOpenHistory }: DomainGridProps) => {
                         />
                         <select
                             title="search_mode"
-                            className="bg-transparent text-sm text-gray-600 border-none outline-none font-semibold cursor-pointer min-w-[150px]"
+                            className="bg-transparent text-sm text-gray-700 border-none outline-none font-semibold cursor-pointer min-w-[138px]"
                             value={searchMode}
                             onChange={e => setSearchMode(e.target.value as any)}
                         >
@@ -187,11 +189,11 @@ const DomainGrid = ({ snapshotId, onOpenHistory }: DomainGridProps) => {
                     </div>
 
                     {/* Second Row: Filters */}
-                    <div className="flex flex-wrap items-center gap-6">
+                    <div className="flex flex-wrap items-center gap-3">
                         {/* Price Filter */}
-                        <div className="hd-field flex items-center gap-3 px-3 py-1">
-                            <span className="text-sm font-semibold text-gray-500 px-2 uppercase tracking-wide">Price</span>
-                            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-md px-2 py-1 min-h-[32px]">
+                        <div className="hd-field flex items-center gap-2 px-3">
+                            <span className="text-xs font-bold text-gray-500 pr-1 uppercase tracking-wide">Price</span>
+                            <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-md px-2 min-h-[30px]">
                                 <span className="text-gray-400 font-medium">$</span>
                                 <input
                                     type="number"
@@ -202,7 +204,7 @@ const DomainGrid = ({ snapshotId, onOpenHistory }: DomainGridProps) => {
                                 />
                             </div>
                             <span className="text-gray-300 font-medium">-</span>
-                            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-md px-2 py-1 min-h-[32px]">
+                            <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-md px-2 min-h-[30px]">
                                 <span className="text-gray-400 font-medium">$</span>
                                 <input
                                     type="number"
@@ -215,9 +217,9 @@ const DomainGrid = ({ snapshotId, onOpenHistory }: DomainGridProps) => {
                         </div>
 
                         {/* Length Filter */}
-                        <div className="hd-field flex items-center gap-3 px-3 py-1">
-                            <span className="text-sm font-semibold text-gray-500 px-2 uppercase tracking-wide">Chars Length</span>
-                            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-md px-2 py-1 min-h-[32px]">
+                        <div className="hd-field flex items-center gap-2 px-3">
+                            <span className="text-xs font-bold text-gray-500 pr-1 uppercase tracking-wide">Length</span>
+                            <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-md px-2 min-h-[30px]">
                                 <input
                                     type="number"
                                     placeholder="Min"
@@ -227,7 +229,7 @@ const DomainGrid = ({ snapshotId, onOpenHistory }: DomainGridProps) => {
                                 />
                             </div>
                             <span className="text-gray-300 font-medium">-</span>
-                            <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-md px-2 py-1 min-h-[32px]">
+                            <div className="flex items-center gap-1.5 bg-white border border-gray-200 rounded-md px-2 min-h-[30px]">
                                 <input
                                     type="number"
                                     placeholder="Max"
@@ -240,12 +242,12 @@ const DomainGrid = ({ snapshotId, onOpenHistory }: DomainGridProps) => {
                     </div>
 
                     {/* Bottom Row: Sort By & Metadata */}
-                    <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
                         <div className="flex items-center gap-2">
                             <label className="text-sm font-medium text-gray-600">Sort by:</label>
                             <select
                                 title="sort_by"
-                                className="hd-field px-3 py-1.5 text-sm font-medium bg-white text-gray-800 min-w-[220px]"
+                                className="hd-field px-3 text-sm font-medium bg-white text-gray-800 min-w-[210px]"
                                 value={sortOption}
                                 onChange={e => setSortOption(e.target.value)}
                             >
@@ -270,7 +272,7 @@ const DomainGrid = ({ snapshotId, onOpenHistory }: DomainGridProps) => {
                 </div>
             </div>
 
-            <div className="ag-theme-alpine flex-1 w-full min-h-0" style={{ height: "100%" }}>
+            <div className="ag-theme-alpine hd-domain-grid flex-1 w-full min-h-0" style={{ height: "100%" }}>
                 <AgGridReact
                     key={`${snapshotId}-${debouncedSearch}-${searchMode}`}
                     ref={gridRef}
@@ -285,7 +287,9 @@ const DomainGrid = ({ snapshotId, onOpenHistory }: DomainGridProps) => {
                     paginationPageSizeSelector={[100, 500, 1000]}
                     defaultColDef={{
                         resizable: true,
+                        suppressMovable: true,
                     }}
+                    suppressCellFocus={true}
                     overlayLoadingTemplate='<span class="ag-overlay-loading-center">Fetching from DuckDB...</span>'
                 />
             </div>

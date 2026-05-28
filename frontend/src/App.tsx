@@ -70,7 +70,7 @@ function App() {
 
   return (
     <div className="app-shell h-screen w-full text-gray-900 font-sans flex flex-col">
-      <header className="app-header border-b border-gray-200/80 px-6 py-3 flex items-center justify-between shadow-sm z-10">
+      <header className="app-header border-b border-gray-200/80 px-5 py-2.5 flex items-center justify-between shadow-sm z-10">
         <div className="flex items-center gap-2">
           <Database className="w-6 h-6 text-indigo-600" />
           <h1 className="text-xl font-bold text-indigo-700">
@@ -121,18 +121,18 @@ function App() {
         </div>
       </header>
 
-      <main className="flex-1 p-5 flex flex-col min-h-0">
+      <main className="flex-1 p-4 flex flex-col min-h-0">
         {activeTab === "scraper" && (
           <ScraperPanel />
         )}
         {activeTab === "browse" && (
           <div className="app-panel flex flex-col h-full bg-white border border-gray-200 overflow-hidden">
-            <div className="control-strip p-4 border-b border-gray-100 flex items-center gap-4">
+            <div className="control-strip px-4 py-3 border-b border-gray-200 flex items-center gap-4">
               <label className="text-sm font-medium text-gray-700">Select Snapshot:</label>
               <div className="flex items-center gap-2">
                 <select
                   title="snapshot_select"
-                  className="hd-field px-3 py-1.5 text-sm bg-white min-w-[240px]"
+                  className="hd-field px-3 text-sm bg-white min-w-[260px]"
                   value={selectedSnapshot || ""}
                   onChange={(e) => setSelectedSnapshot(Number(e.target.value))}
                 >
