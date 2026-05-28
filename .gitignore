@@ -1,25 +1,33 @@
-# Node
+.DS_Store
+__pycache__/
+*.py[cod]
+*.log
+
+# Python environments
+venv/
+.venv/
+backend/venv/
+
+# Node/Vite
+node_modules/
 frontend/node_modules/
 frontend/dist/
-frontend/.env.local
+frontend/dist-ssr/
 
-# Python
-backend/venv/
-backend/__pycache__/
-backend/*.pyc
+# Build outputs
+build/
+dist/
+release/
 backend/build/
 backend/dist/
 backend/*.spec
-backend/.pytest_cache/
 
-# Databases
-backend/hugedomains.duckdb
-backend/hugedomains.duckdb.wal
-backend/*.csv
+# Local databases and scrape output
+*.duckdb
+*.duckdb.wal
+*.db
+snapshot_*.csv
 
-# Mac
-.DS_Store
-
-# IDEs
-.vscode/
-.idea/
+# Local env/config
+.env
+*.local

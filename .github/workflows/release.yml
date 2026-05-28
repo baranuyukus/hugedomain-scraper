@@ -1,0 +1,114 @@
+name: Desktop Release
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            artifact: HugeDomainsTracker-Windows
+          - name: macOS
+            os: macos-latest
+            artifact: HugeDomainsTracker-macOS
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Build Windows executable
+        if: runner.os == 'Windows'
+        working-directory: backend
+        shell: pwsh
+        run: |
+          python -m PyInstaller `
+            --name HugeDomainsTracker-Windows `
+            --onefile `
+            --windowed `
+            --noconfirm `
+            --clean `
+            --add-data "..\frontend\dist;frontend\dist" `
+            run.py
+          New-Item -ItemType Directory -Force -Path ..\release-assets | Out-Null
+          Copy-Item dist\HugeDomainsTracker-Windows.exe ..\release-assets\HugeDomainsTracker-Windows.exe
+
+      - name: Build macOS app
+        if: runner.os == 'macOS'
+        working-directory: backend
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: |
+          python -m PyInstaller \
+            --name HugeDomainsTracker-macOS \
+            --windowed \
+            --noconfirm \
+            --clean \
+            --add-data "../frontend/dist:frontend/dist" \
+            run.py
+          mkdir -p ../release-assets
+          ditto -c -k --sequesterRsrc --keepParent \
+            dist/HugeDomainsTracker-macOS.app \
+            ../release-assets/HugeDomainsTracker-macOS.app.zip
+
+      - name: Upload release asset artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: release-assets/*
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: HugeDomains Tracker build ${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          files: release-assets/*
+          prerelease: true
+          make_latest: false
