@@ -4,7 +4,8 @@ import DomainGrid from "./components/DomainGrid";
 import DiffGrid from "./components/DiffGrid";
 import DomainHistoryModal from "./components/DomainHistoryModal";
 import ScraperPanel from "./components/ScraperPanel";
-import { Database, ArrowRightLeft, History, Activity, Trash2 } from "lucide-react";
+import WatchlistGrid from "./components/WatchlistGrid";
+import { Database, ArrowRightLeft, History, Activity, Trash2, Bookmark } from "lucide-react";
 
 const API_BASE = "http://127.0.0.1:8000";
 
@@ -17,7 +18,7 @@ interface Snapshot {
 
 function App() {
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
-  const [activeTab, setActiveTab] = useState<"browse" | "diff" | "scraper">("browse");
+  const [activeTab, setActiveTab] = useState<"browse" | "diff" | "scraper" | "watchlist">("browse");
 
   // Browse State
   const [selectedSnapshot, setSelectedSnapshot] = useState<number | null>(null);
@@ -106,6 +107,16 @@ function App() {
           >
             <Activity className="w-4 h-4" />
             Live Scraper
+          </button>
+          <button
+            onClick={() => setActiveTab("watchlist")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2 ${activeTab === "watchlist"
+              ? "bg-amber-50 text-amber-700"
+              : "text-gray-600 hover:bg-gray-100"
+              }`}
+          >
+            <Bookmark className="w-4 h-4" />
+            Watchlist
           </button>
         </div>
       </header>
@@ -199,6 +210,11 @@ function App() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+        {activeTab === "watchlist" && (
+          <div className="flex flex-col h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <WatchlistGrid onOpenHistory={(id, name) => setHistoryDomain({ id, name })} />
           </div>
         )}
       </main>

@@ -1,4 +1,4 @@
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, useEffect } from "react";
 import { AgGridReact } from "ag-grid-react";
 import { ModuleRegistry, AllCommunityModule } from "ag-grid-community";
 import type { ColDef, IDatasource, IGetRowsParams } from "ag-grid-community";
@@ -9,7 +9,7 @@ import axios from "axios";
 // Register all community features
 ModuleRegistry.registerModules([AllCommunityModule]);
 import { useDebounceValue } from "usehooks-ts";
-import { Search } from "lucide-react";
+import { Search, Bookmark } from "lucide-react";
 
 interface DomainGridProps {
     snapshotId: number;
@@ -44,7 +44,51 @@ const DomainGrid = ({ snapshotId, onOpenHistory }: DomainGridProps) => {
     const [totalRowCount, setTotalRowCount] = useState(0);
     const [queryTimeMs, setQueryTimeMs] = useState(0);
 
+    // Watchlist
+    const savedIdsRef = useRef<Set<number>>(new Set());
+
+    useEffect(() => {
+        axios.get(`${API_BASE}/watchlist`).then(res => {
+            savedIdsRef.current = new Set(res.data.items.map((item: any) => item.domain_id));
+            gridRef.current?.api?.refreshCells({ force: true, columns: ["bookmark"] });
+        }).catch(() => {});
+    }, []);
+
+    const handleToggleWatchlist = async (data: any) => {
+        if (!data) return;
+        const { domain_id, domain, price_usd } = data;
+        try {
+            if (savedIdsRef.current.has(domain_id)) {
+                await axios.delete(`${API_BASE}/watchlist/${domain_id}`);
+                const next = new Set(savedIdsRef.current);
+                next.delete(domain_id);
+                savedIdsRef.current = next;
+            } else {
+                await axios.post(`${API_BASE}/watchlist`, { domain_id, domain, price_usd });
+                savedIdsRef.current = new Set([...savedIdsRef.current, domain_id]);
+            }
+            gridRef.current?.api?.refreshCells({ force: true, columns: ["bookmark"] });
+        } catch (e) {
+            console.error("Failed to toggle watchlist", e);
+        }
+    };
+
     const columnDefs: ColDef[] = [
+        {
+            field: "bookmark", headerName: "", sortable: false, filter: false, width: 50, pinned: "left",
+            cellRenderer: (params: any) => {
+                const isSaved = savedIdsRef.current.has(params.data?.domain_id);
+                return (
+                    <button
+                        onClick={() => handleToggleWatchlist(params.data)}
+                        className={`mt-1 p-1 rounded transition-colors ${isSaved ? "text-amber-500 hover:text-amber-700" : "text-gray-300 hover:text-amber-400"}`}
+                        title={isSaved ? "Remove from watchlist" : "Save to watchlist"}
+                    >
+                        <Bookmark className="w-4 h-4" fill={isSaved ? "currentColor" : "none"} />
+                    </button>
+                );
+            }
+        },
         {
             field: "history_action", headerName: "Flow", sortable: false, filter: false, width: 100, pinned: "left",
             cellRenderer: (params: any) => (
