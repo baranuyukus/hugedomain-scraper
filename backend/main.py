@@ -386,6 +386,9 @@ async def start_scraper(snapshot_name: str, method: str = "legacy"):
 @app.get("/scrape/status")
 def get_scraper_status():
     """Returns the live status of the running extraction."""
+    temp_csv_size = 0
+    if scraper_state.temp_csv_path and os.path.exists(scraper_state.temp_csv_path):
+        temp_csv_size = os.path.getsize(scraper_state.temp_csv_path)
     return {
         "is_running": scraper_state.is_running,
         "status": scraper_state.status,
@@ -395,6 +398,8 @@ def get_scraper_status():
         "current_phase": scraper_state.current_phase,
         "phases_completed": scraper_state.phases_completed,
         "phases_total": scraper_state.phases_total,
+        "temp_csv_path": scraper_state.temp_csv_path,
+        "temp_csv_size": temp_csv_size,
     }
 
 @app.post("/scrape/stop")

@@ -176,6 +176,7 @@ const WatchlistGrid = ({ onOpenHistory }: WatchlistGridProps) => {
                 ) : (
                     <AgGridReact
                         ref={gridRef}
+                        theme="legacy"
                         rowData={items}
                         columnDefs={columnDefs}
                         defaultColDef={{ resizable: true }}

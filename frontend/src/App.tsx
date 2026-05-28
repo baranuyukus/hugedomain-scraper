@@ -69,11 +69,11 @@ function App() {
   };
 
   return (
-    <div className="h-screen w-full bg-gray-50 text-gray-900 font-sans flex flex-col">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shadow-sm z-10">
+    <div className="app-shell h-screen w-full text-gray-900 font-sans flex flex-col">
+      <header className="app-header border-b border-gray-200/80 px-6 py-3 flex items-center justify-between shadow-sm z-10">
         <div className="flex items-center gap-2">
           <Database className="w-6 h-6 text-indigo-600" />
-          <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-indigo-800">
+          <h1 className="text-xl font-bold text-indigo-700">
             HugeDomains Tracker
           </h1>
         </div>
@@ -121,18 +121,18 @@ function App() {
         </div>
       </header>
 
-      <main className="flex-1 p-6 flex flex-col min-h-0">
+      <main className="flex-1 p-5 flex flex-col min-h-0">
         {activeTab === "scraper" && (
           <ScraperPanel />
         )}
         {activeTab === "browse" && (
-          <div className="flex flex-col h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="p-4 border-b border-gray-100 flex items-center gap-4 bg-gray-50/50">
+          <div className="app-panel flex flex-col h-full bg-white border border-gray-200 overflow-hidden">
+            <div className="control-strip p-4 border-b border-gray-100 flex items-center gap-4">
               <label className="text-sm font-medium text-gray-700">Select Snapshot:</label>
               <div className="flex items-center gap-2">
                 <select
                   title="snapshot_select"
-                  className="border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-w-[200px]"
+                  className="hd-field px-3 py-1.5 text-sm bg-white min-w-[240px]"
                   value={selectedSnapshot || ""}
                   onChange={(e) => setSelectedSnapshot(Number(e.target.value))}
                 >
@@ -172,13 +172,13 @@ function App() {
         )}
 
         {activeTab === "diff" && (
-          <div className="flex flex-col h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="p-4 border-b border-gray-100 flex items-center gap-4 bg-gray-50/50 flex-wrap">
+          <div className="app-panel flex flex-col h-full bg-white border border-gray-200 overflow-hidden">
+            <div className="control-strip p-4 border-b border-gray-100 flex items-center gap-4 flex-wrap">
               <div className="flex items-center gap-2">
                 <label className="text-sm font-medium text-gray-700">Old (A):</label>
                 <select
                   title="snapshot_A"
-                  className="border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 min-w-[200px]"
+                  className="hd-field px-3 py-1.5 text-sm bg-white min-w-[220px]"
                   value={snapshotA || ""}
                   onChange={(e) => setSnapshotA(Number(e.target.value))}
                 >
@@ -190,7 +190,7 @@ function App() {
                 <label className="text-sm font-medium text-gray-700">New (B):</label>
                 <select
                   title="snapshot_B"
-                  className="border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white focus:ring-2 focus:ring-indigo-500 min-w-[200px]"
+                  className="hd-field px-3 py-1.5 text-sm bg-white min-w-[220px]"
                   value={snapshotB || ""}
                   onChange={(e) => setSnapshotB(Number(e.target.value))}
                 >
@@ -213,7 +213,7 @@ function App() {
           </div>
         )}
         {activeTab === "watchlist" && (
-          <div className="flex flex-col h-full bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="app-panel flex flex-col h-full bg-white border border-gray-200 overflow-hidden">
             <WatchlistGrid onOpenHistory={(id, name) => setHistoryDomain({ id, name })} />
           </div>
         )}

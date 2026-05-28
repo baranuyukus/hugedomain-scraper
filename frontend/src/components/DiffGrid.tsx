@@ -128,6 +128,7 @@ const DiffGrid = ({ snapshotA, snapshotB, onOpenHistory }: DiffGridProps) => {
                 <AgGridReact
                     key={`${snapshotA}-${snapshotB}-${diffType}`}
                     ref={gridRef}
+                    theme="legacy"
                     columnDefs={columnDefs}
                     rowModelType="infinite"
                     datasource={dataSource}

@@ -1,13 +1,13 @@
 @import "tailwindcss";
 
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  color-scheme: light;
+  color: #111827;
+  background-color: #f4f6fb;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -23,9 +23,120 @@ body,
   min-width: 320px;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
-  }
+body {
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input,
+select,
+textarea {
+  color: #111827;
+}
+
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #64748b 50%),
+    linear-gradient(135deg, #64748b 50%, transparent 50%);
+  background-position:
+    calc(100% - 17px) calc(50% - 3px),
+    calc(100% - 12px) calc(50% - 3px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 2.25rem !important;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+button,
+select {
+  cursor: pointer;
+}
+
+.app-shell {
+  background:
+    radial-gradient(circle at top left, rgba(79, 70, 229, 0.07), transparent 28rem),
+    linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+}
+
+.app-header {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.app-panel {
+  border-radius: 8px;
+  box-shadow: 0 16px 50px rgba(15, 23, 42, 0.08);
+}
+
+.control-strip {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.hd-field {
+  min-height: 42px;
+  border: 1px solid #d7dce5;
+  border-radius: 10px;
+  background-color: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.hd-field:focus,
+.hd-field:focus-within {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.14);
+  outline: none;
+}
+
+.ag-theme-alpine {
+  --ag-font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ag-font-size: 13px;
+  --ag-header-height: 42px;
+  --ag-row-height: 36px;
+  --ag-header-background-color: #f8fafc;
+  --ag-header-foreground-color: #334155;
+  --ag-border-color: #e2e8f0;
+  --ag-row-border-color: #eef2f7;
+  --ag-odd-row-background-color: #ffffff;
+  --ag-background-color: #ffffff;
+  --ag-foreground-color: #111827;
+  --ag-selected-row-background-color: #eef2ff;
+  --ag-range-selection-border-color: #6366f1;
+}
+
+.ag-theme-alpine .ag-header-cell-label {
+  font-weight: 700;
+}
+
+.ag-theme-alpine .ag-row-hover {
+  background-color: #f8fafc;
 }

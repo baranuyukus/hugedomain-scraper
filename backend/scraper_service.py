@@ -69,6 +69,7 @@ class ScraperState:
         self.phases_completed: int = 0
         self.phases_total: int = 0
         self.method: str = "legacy"
+        self.temp_csv_path: str = ""
 
 scraper_state = ScraperState()
 
@@ -254,6 +255,7 @@ async def run_scraper_engine(snapshot_name: str, method: str = "legacy"):
     
     # Initialize CSV file (cross-platform temp path)
     csv_file = os.path.join(tempfile.gettempdir(), f"snapshot_{snapshot_id}.csv")
+    scraper_state.temp_csv_path = csv_file
     save_to_csv([], filename=csv_file, append=False)
     
     global_seen = set()
@@ -327,12 +329,14 @@ async def run_scraper_engine(snapshot_name: str, method: str = "legacy"):
             finally:
                 if os.path.exists(csv_file):
                     os.remove(csv_file)
+                scraper_state.temp_csv_path = ""
         
         if scraper_state.total_extracted > 0:
             await asyncio.get_event_loop().run_in_executor(None, finalize_scrape)
         else:
             if os.path.exists(csv_file):
                 os.remove(csv_file)
+            scraper_state.temp_csv_path = ""
 
         scraper_state.status = "completed"
 

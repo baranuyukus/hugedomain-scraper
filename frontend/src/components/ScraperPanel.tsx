@@ -4,6 +4,18 @@ import { Play, Square, Activity, Database, RefreshCw, Shield, ShieldOff, Eye, Ey
 
 const API_BASE = "http://127.0.0.1:8000";
 
+const formatBytes = (bytes: number | undefined) => {
+    if (!bytes) return "0 B";
+    const units = ["B", "KB", "MB", "GB"];
+    let value = bytes;
+    let unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+        value /= 1024;
+        unitIndex += 1;
+    }
+    return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+};
+
 const ScraperPanel = () => {
     const [status, setStatus] = useState<any>(null);
     const [snapshotName, setSnapshotName] = useState("");
@@ -98,9 +110,9 @@ const ScraperPanel = () => {
     const isRunning = status.is_running;
 
     return (
-        <div className="max-w-4xl mx-auto p-6 space-y-6 animate-in fade-in duration-300">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-white">
+        <div className="max-w-5xl mx-auto p-5 space-y-5 animate-in fade-in duration-300">
+            <div className="app-panel bg-white border border-gray-200 overflow-hidden">
+                <div className="control-strip p-6 border-b border-gray-100">
                     <div className="flex items-center justify-between">
                         <div>
                             <h2 className="text-xl font-bold gap-2 flex items-center text-gray-900">
@@ -141,7 +153,7 @@ const ScraperPanel = () => {
                                             value={snapshotName}
                                             onChange={(e) => setSnapshotName(e.target.value)}
                                             placeholder="e.g. March 2026 Full Scan"
-                                            className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                            className="hd-field w-full px-4 py-2 outline-none"
                                         />
                                     </div>
                                     <div>
@@ -150,7 +162,7 @@ const ScraperPanel = () => {
                                             title="scraper_method"
                                             value={scraperMethod}
                                             onChange={(e) => setScraperMethod(e.target.value as "legacy" | "prefix")}
-                                            className="w-full border border-gray-300 rounded-lg px-4 py-2 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-sm"
+                                            className="hd-field w-full px-4 py-2 bg-white outline-none text-sm"
                                         >
                                             <option value="legacy">Legacy: length + price phases</option>
                                             <option value="prefix">Prefix: 2-character starts-with scan</option>
@@ -216,18 +228,29 @@ const ScraperPanel = () => {
                             )}
 
                             {isRunning && (
-                                <div className="mt-6 flex items-center text-xs text-indigo-600 font-medium bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100 gap-2">
-                                    <RefreshCw className="w-3 h-3 animate-spin" />
-                                    <span>Writing to DuckDB Live...</span>
-                                </div>
+                                <>
+                                    <div className="mt-6 flex items-center text-xs text-indigo-600 font-medium bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100 gap-2">
+                                        <RefreshCw className="w-3 h-3 animate-spin" />
+                                        <span>Writing to temporary CSV...</span>
+                                    </div>
+                                    <div className="mt-3 w-full max-w-sm rounded-lg border border-gray-200 bg-white px-3 py-2 text-left">
+                                        <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Temp storage</div>
+                                        <div className="mt-1 text-sm font-bold text-gray-900">{formatBytes(status.temp_csv_size)}</div>
+                                        {status.temp_csv_path && (
+                                            <div className="mt-1 truncate text-xs text-gray-400" title={status.temp_csv_path}>
+                                                {status.temp_csv_path}
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
                             )}
                         </div>
                     </div>
                 </div>
             </div>
             {/* Proxy Settings Card */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                <div className="p-5 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-white flex items-center justify-between">
+            <div className="app-panel bg-white border border-gray-200 overflow-hidden">
+                <div className="control-strip p-5 border-b border-gray-100 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         {proxyEnabled
                             ? <Shield className="w-5 h-5 text-emerald-500" />
@@ -257,7 +280,7 @@ const ScraperPanel = () => {
                     <div className="space-y-1">
                         <label className="block text-sm font-medium text-gray-700">Proxy URL</label>
                         <div className="flex items-center gap-2">
-                            <div className={`flex-1 flex items-center gap-2 border rounded-lg px-3 py-2 transition-colors ${proxyEnabled ? "border-gray-300 bg-white focus-within:ring-2 focus-within:ring-emerald-400" : "border-gray-200 bg-gray-50"}`}>
+                            <div className={`hd-field flex-1 flex items-center gap-2 px-3 py-2 transition-colors ${proxyEnabled ? "bg-white" : "bg-gray-50"}`}>
                                 <input
                                     type={proxyShowUrl ? "text" : "password"}
                                     value={proxyUrl}
